@@ -27,7 +27,7 @@ final class TypefluxOfficialASRRoutingClientTests: XCTestCase {
         await session.setHandler { request in
             XCTAssertEqual(request.url?.path, "/api/v1/asr/aliyun/token")
             return (
-                Data(#"{"code":"OK","message":"","data":{"type":"aliyun","token":"st-temp","expires_at":1893456000,"usage_report_id":"report-1"}}"#
+                Data(#"{"code":"OK","message":"","data":{"type":"aliyun","token":"st-temp","model":"paraformer-realtime-v2","expires_at":1893456000,"usage_report_id":"report-1"}}"#
                     .utf8),
                 Self.httpResponse(url: request.url!, status: 200)
             )
@@ -36,7 +36,12 @@ final class TypefluxOfficialASRRoutingClientTests: XCTestCase {
 
         let decision = try await client.fetchRoute(accessToken: "cloud-token", scenario: .askAnything)
 
-        XCTAssertEqual(decision, .aliyun(token: "st-temp", expiresAt: 1_893_456_000, usageReportID: "report-1"))
+        XCTAssertEqual(decision, .aliyun(
+            token: "st-temp",
+            model: "paraformer-realtime-v2",
+            expiresAt: 1_893_456_000,
+            usageReportID: "report-1"
+        ))
     }
 
     func testReportAliyunUsageSendsExpectedPayload() async throws {
@@ -116,6 +121,7 @@ final class TypefluxOfficialTranscriberRoutingTests: XCTestCase {
     func testAliyunRouteBypassesMergedLLMAndReportsUsage() async throws {
         let routing = MockTypefluxRoutingClient(route: .aliyun(
             token: "st-temp",
+            model: "paraformer-realtime-v2",
             expiresAt: 1_893_456_000,
             usageReportID: "report-1"
         ))
@@ -143,6 +149,7 @@ final class TypefluxOfficialTranscriberRoutingTests: XCTestCase {
         XCTAssertEqual(transport.directAliyunCallCount, 1)
         XCTAssertEqual(transport.webSocketLLMCallCount, 0)
         XCTAssertEqual(transport.lastDirectAliyunToken, "st-temp")
+        XCTAssertEqual(transport.lastDirectAliyunModel, "paraformer-realtime-v2")
         XCTAssertEqual(report.accessToken, "cloud-token")
         XCTAssertEqual(report.usageReportID, "report-1")
         XCTAssertEqual(report.audioDurationMs, 100)
@@ -203,6 +210,7 @@ final class TypefluxOfficialTranscriberRoutingTests: XCTestCase {
         await session.append(buffer)
         await routing.release(route: .aliyun(
             token: "st-temp",
+            model: "paraformer-realtime-v2",
             expiresAt: nil,
             usageReportID: "report-1"
         ))
@@ -214,6 +222,7 @@ final class TypefluxOfficialTranscriberRoutingTests: XCTestCase {
         XCTAssertEqual(transcript, "realtime")
         XCTAssertEqual(startCountAfterFinish, 1)
         XCTAssertEqual(sentByteCount, CloudASRAudioConverter.chunkSize)
+        XCTAssertEqual(transport.lastDirectAliyunModel, "paraformer-realtime-v2")
     }
 
     private func makeFloatBuffer(frameCount: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
@@ -394,6 +403,7 @@ private final class MockTypefluxTransport: TypefluxOfficialASRTransport, @unchec
     var webSocketCallCount = 0
     var webSocketLLMCallCount = 0
     var lastDirectAliyunToken: String?
+    var lastDirectAliyunModel: String?
     var directPCMStreamFactory: @Sendable () -> any PCM16RealtimeTranscriptionSession = {
         MockPCM16RealtimeTranscriptionSession()
     }
@@ -426,18 +436,22 @@ private final class MockTypefluxTransport: TypefluxOfficialASRTransport, @unchec
     func transcribeViaDirectAliyun(
         pcmData _: Data,
         token: String,
+        model: String,
         onUpdate _: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         directAliyunCallCount += 1
         lastDirectAliyunToken = token
+        lastDirectAliyunModel = model
         return directTranscript
     }
 
     func makeDirectAliyunPCMStream(
         token: String,
+        model: String,
         onUpdate _: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) -> any PCM16RealtimeTranscriptionSession {
         lastDirectAliyunToken = token
+        lastDirectAliyunModel = model
         return directPCMStreamFactory()
     }
 }

@@ -64,11 +64,13 @@ protocol TypefluxOfficialASRTransport: Sendable {
     func transcribeViaDirectAliyun(
         pcmData: Data,
         token: String,
+        model: String,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String
 
     func makeDirectAliyunPCMStream(
         token: String,
+        model: String,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) -> any PCM16RealtimeTranscriptionSession
 }
@@ -106,10 +108,11 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
 
         let pcmData = try CloudASRAudioConverter.convert(url: audioFile.fileURL)
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-        if case let .aliyun(aliyunToken, _, usageReportID) = route {
+        if case let .aliyun(aliyunToken, model, _, usageReportID) = route {
             let transcript = try await transport.transcribeViaDirectAliyun(
                 pcmData: pcmData,
                 token: aliyunToken,
+                model: model,
                 onUpdate: onUpdate
             )
             reportAliyunUsageInBackground(
@@ -148,10 +151,11 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
 
         let pcmData = try CloudASRAudioConverter.convert(url: audioFile.fileURL)
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-        if case let .aliyun(aliyunToken, _, usageReportID) = route {
+        if case let .aliyun(aliyunToken, model, _, usageReportID) = route {
             let transcript = try await transport.transcribeViaDirectAliyun(
                 pcmData: pcmData,
                 token: aliyunToken,
+                model: model,
                 onUpdate: onASRUpdate
             )
             reportAliyunUsageInBackground(
@@ -190,9 +194,13 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
                 }
 
                 let route = try await routingClient.fetchRoute(accessToken: token, scenario: scenario)
-                if case let .aliyun(aliyunToken, _, usageReportID) = route {
+                if case let .aliyun(aliyunToken, model, _, usageReportID) = route {
                     return TypefluxOfficialAliyunUsageReportingPCMStream(
-                        upstream: transport.makeDirectAliyunPCMStream(token: aliyunToken, onUpdate: onUpdate),
+                        upstream: transport.makeDirectAliyunPCMStream(
+                            token: aliyunToken,
+                            model: model,
+                            onUpdate: onUpdate
+                        ),
                         accessToken: token,
                         usageReportID: usageReportID,
                         scenario: scenario,
@@ -224,10 +232,10 @@ final class TypefluxOfficialTranscriber: TypefluxCloudScenarioAwareTranscriber, 
         let pcmData = RemoteSTTTestAudio.pcm16MonoSilence()
         let routingClient = TypefluxOfficialASRRoutingHTTPClient()
         let route = try await routingClient.fetchRoute(accessToken: token, scenario: .modelSetup)
-        if case let .aliyun(aliyunToken, _, usageReportID) = route {
+        if case let .aliyun(aliyunToken, model, _, usageReportID) = route {
             let transcript = try await AliCloudFunASRSession.run(
                 pcmData: pcmData,
-                model: AliCloudASRDefaults.model,
+                model: model,
                 apiKey: aliyunToken
             ) { _ in }
             let audioDurationMs = TypefluxOfficialASRUsageMeter.audioDurationMilliseconds(
@@ -372,11 +380,12 @@ struct DefaultTypefluxOfficialASRTransport: TypefluxOfficialASRTransport {
     func transcribeViaDirectAliyun(
         pcmData: Data,
         token: String,
+        model: String,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) async throws -> String {
         try await AliCloudFunASRSession.run(
             pcmData: pcmData,
-            model: AliCloudASRDefaults.model,
+            model: model,
             apiKey: token,
             onUpdate: onUpdate
         )
@@ -384,9 +393,10 @@ struct DefaultTypefluxOfficialASRTransport: TypefluxOfficialASRTransport {
 
     func makeDirectAliyunPCMStream(
         token: String,
+        model: String,
         onUpdate: @escaping @Sendable (TranscriptionSnapshot) async -> Void
     ) -> any PCM16RealtimeTranscriptionSession {
-        AliCloudFunASRSession(model: AliCloudASRDefaults.model, apiKey: token, onUpdate: onUpdate)
+        AliCloudFunASRSession(model: model, apiKey: token, onUpdate: onUpdate)
     }
 }
 

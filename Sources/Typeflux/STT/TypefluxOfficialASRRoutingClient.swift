@@ -3,13 +3,13 @@ import os
 
 enum TypefluxOfficialASRRouteDecision: Equatable, Sendable {
     case webSocket
-    case aliyun(token: String, expiresAt: Int64?, usageReportID: String)
+    case aliyun(token: String, model: String, expiresAt: Int64?, usageReportID: String)
 
     var usageReportID: String? {
         switch self {
         case .webSocket:
             nil
-        case let .aliyun(_, _, usageReportID):
+        case let .aliyun(_, _, _, usageReportID):
             usageReportID
         }
     }
@@ -106,7 +106,18 @@ struct TypefluxOfficialASRRoutingHTTPClient: TypefluxOfficialASRRoutingClient {
             else {
                 throw TypefluxOfficialASRRoutingError.missingUsageReportID
             }
-            return .aliyun(token: token, expiresAt: payload.expiresAt, usageReportID: usageReportID)
+            let trimmedModel = payload.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedModel = if let trimmedModel, !trimmedModel.isEmpty {
+                trimmedModel
+            } else {
+                AliCloudASRDefaults.model
+            }
+            return .aliyun(
+                token: token,
+                model: resolvedModel,
+                expiresAt: payload.expiresAt,
+                usageReportID: usageReportID
+            )
         default:
             throw TypefluxOfficialASRRoutingError.unknownRouteType(payload.type)
         }
@@ -175,12 +186,14 @@ enum TypefluxOfficialASRUsageMeter {
 private struct AliyunTokenResponse: Decodable {
     let type: String
     let token: String?
+    let model: String?
     let expiresAt: Int64?
     let usageReportID: String?
 
     enum CodingKeys: String, CodingKey {
         case type
         case token
+        case model
         case expiresAt = "expires_at"
         case usageReportID = "usage_report_id"
     }
