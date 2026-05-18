@@ -9,3 +9,5 @@ coverage.lcov
 .agents
 .github/agents/
 .n8nac/
+# CocoIndex Code (ccc)
+/.cocoindex_code/
